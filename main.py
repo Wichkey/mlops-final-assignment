@@ -10,7 +10,9 @@ def cmd_fetch() -> None:
 
 
 def cmd_features() -> None:
-    print("not implemented yet")
+    from src.features.build_features import build_features
+
+    build_features()
 
 
 def cmd_train() -> None:
