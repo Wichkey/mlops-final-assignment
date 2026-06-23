@@ -4,7 +4,9 @@ import argparse
 
 
 def cmd_fetch() -> None:
-    print("not implemented yet")
+    from src.data.fetch import run_fetch
+
+    run_fetch()
 
 
 def cmd_features() -> None:
