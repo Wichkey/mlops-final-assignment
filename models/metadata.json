@@ -1,0 +1,39 @@
+{
+  "model_name": "linear_regression",
+  "target_column": "target_revenue_growth",
+  "test_year": 2023,
+  "feature_columns": [
+    "annual_return",
+    "annual_volatility",
+    "gdp_growth",
+    "dgs10",
+    "cpi",
+    "unrate",
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "roa",
+    "roe",
+    "debt_to_equity",
+    "current_ratio",
+    "fcf_margin",
+    "asset_turnover",
+    "log_market_cap",
+    "prior_revenue_growth",
+    "ticker_code"
+  ],
+  "train_rows": 2500,
+  "test_rows": 500,
+  "train_metrics": {
+    "mae": 0.09563699408041466,
+    "rmse": 0.12039619123444825,
+    "r2": 0.007945527872467162,
+    "directional_accuracy": 0.6868
+  },
+  "test_metrics": {
+    "mae": 0.0906248566137601,
+    "rmse": 0.11248307705460396,
+    "r2": -0.011309171798126405,
+    "directional_accuracy": 0.688
+  }
+}
