@@ -1,5 +1,3 @@
-"""Model training with year-based chronological split."""
-
 from __future__ import annotations
 
 import json
@@ -31,7 +29,6 @@ def year_based_split(
     frame: pd.DataFrame,
     test_year: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split on fiscal_year: train < test_year, test == test_year."""
     train = frame[frame["fiscal_year"] < test_year].copy()
     test = frame[frame["fiscal_year"] == test_year].copy()
     return train.reset_index(drop=True), test.reset_index(drop=True)
@@ -41,7 +38,6 @@ def compute_metrics(
     y_true: np.ndarray | pd.Series,
     y_pred: np.ndarray | pd.Series,
 ) -> dict[str, float]:
-    """Return MAE, RMSE, R², and directional accuracy."""
     y_true_arr = np.asarray(y_true)
     y_pred_arr = np.asarray(y_pred)
 
@@ -81,7 +77,6 @@ def _build_pipeline(model_name: str) -> Pipeline:
 
 
 def train_models(config: dict[str, Any] | None = None) -> dict[str, Path]:
-    """Train models from features.csv and write model artifacts."""
     setup_logging()
     config = config or load_config()
 
