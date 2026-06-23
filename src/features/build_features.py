@@ -1,5 +1,3 @@
-"""Leakage-safe feature engineering from raw company-year snapshots."""
-
 from __future__ import annotations
 
 import logging
@@ -82,7 +80,6 @@ def _batch_dir(config: dict[str, Any]) -> Path:
 
 
 def load_raw_snapshots(config: dict[str, Any] | None = None) -> pd.DataFrame:
-    """Load and merge raw fundamentals, stock, and macro snapshots."""
     config = config or load_config()
     raw_dir = _raw_dir(config)
 
@@ -116,7 +113,6 @@ def _encode_tickers(tickers: pd.Series) -> pd.Series:
 
 
 def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
-    """Build year-t features and year-t+1 targets without leakage."""
     frame = panel.copy()
 
     frame["gross_margin"] = _safe_ratio(
@@ -169,7 +165,6 @@ def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def feature_columns(frame: pd.DataFrame | None = None) -> list[str]:
-    """Return model feature columns, excluding ids, raw inputs, and targets."""
     excluded = set(ID_COLUMNS + RAW_FINANCIAL_COLUMNS + TARGET_COLUMNS)
     excluded.add("market_cap")
 
@@ -184,7 +179,6 @@ def feature_columns(frame: pd.DataFrame | None = None) -> list[str]:
 
 
 def _labeled_feature_table(frame: pd.DataFrame) -> pd.DataFrame:
-    """Keep rows with complete targets (drops the latest fiscal year)."""
     labeled = frame.dropna(subset=TARGET_COLUMNS).copy()
     labeled = labeled.replace([np.inf, -np.inf], np.nan)
     labeled = labeled.dropna(subset=feature_columns(labeled))
@@ -195,7 +189,6 @@ def build_on_demand_dataset(
     frame: pd.DataFrame,
     config: dict[str, Any],
 ) -> pd.DataFrame:
-    """Build the forward-scoring dataset for the configured feature year."""
     feature_year = int(config["prediction"]["feature_year"])
     on_demand = frame[frame["fiscal_year"] == feature_year].copy()
     columns = ID_COLUMNS + feature_columns(on_demand)
@@ -203,7 +196,6 @@ def build_on_demand_dataset(
 
 
 def build_features(config: dict[str, Any] | None = None) -> dict[str, Path]:
-    """Engineer features from raw snapshots and write processed outputs."""
     setup_logging()
     config = config or load_config()
 

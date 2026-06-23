@@ -16,7 +16,9 @@ def cmd_features() -> None:
 
 
 def cmd_train() -> None:
-    print("not implemented yet")
+    from src.models.train import train_models
+
+    train_models()
 
 
 def cmd_predict() -> None:
