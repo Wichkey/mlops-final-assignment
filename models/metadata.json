@@ -1,5 +1,5 @@
 {
-  "model_name": "linear_regression",
+  "model_name": "ridge",
   "target_column": "target_revenue_growth",
   "test_year": 2023,
   "feature_columns": [
@@ -24,16 +24,74 @@
   ],
   "train_rows": 2500,
   "test_rows": 500,
+  "models": {
+    "linear_regression": {
+      "train_metrics": {
+        "mae": 0.09563699408041466,
+        "rmse": 0.12039619123444825,
+        "r2": 0.007945527872467162,
+        "directional_accuracy": 0.6868
+      },
+      "test_metrics": {
+        "mae": 0.0906248566137601,
+        "rmse": 0.11248307705460396,
+        "r2": -0.011309171798126405,
+        "directional_accuracy": 0.688
+      }
+    },
+    "ridge": {
+      "train_metrics": {
+        "mae": 0.09563807959026745,
+        "rmse": 0.12039622953111562,
+        "r2": 0.007944896749741748,
+        "directional_accuracy": 0.6868
+      },
+      "test_metrics": {
+        "mae": 0.09062215747983073,
+        "rmse": 0.11247539637678111,
+        "r2": -0.011171066139285202,
+        "directional_accuracy": 0.688
+      }
+    },
+    "random_forest": {
+      "train_metrics": {
+        "mae": 0.03662408146965574,
+        "rmse": 0.0465370797399629,
+        "r2": 0.8517794987730551,
+        "directional_accuracy": 0.9156
+      },
+      "test_metrics": {
+        "mae": 0.09323411732280804,
+        "rmse": 0.11618608419470397,
+        "r2": -0.078990943342782,
+        "directional_accuracy": 0.668
+      }
+    },
+    "gradient_boosting": {
+      "train_metrics": {
+        "mae": 0.08562792909619646,
+        "rmse": 0.10770494957517127,
+        "r2": 0.2060715837651047,
+        "directional_accuracy": 0.7024
+      },
+      "test_metrics": {
+        "mae": 0.09154546103818467,
+        "rmse": 0.11426948657487551,
+        "r2": -0.04368663360921854,
+        "directional_accuracy": 0.684
+      }
+    }
+  },
   "train_metrics": {
-    "mae": 0.09563699408041466,
-    "rmse": 0.12039619123444825,
-    "r2": 0.007945527872467162,
+    "mae": 0.09563807959026745,
+    "rmse": 0.12039622953111562,
+    "r2": 0.007944896749741748,
     "directional_accuracy": 0.6868
   },
   "test_metrics": {
-    "mae": 0.0906248566137601,
-    "rmse": 0.11248307705460396,
-    "r2": -0.011309171798126405,
+    "mae": 0.09062215747983073,
+    "rmse": 0.11247539637678111,
+    "r2": -0.011171066139285202,
     "directional_accuracy": 0.688
   }
 }
