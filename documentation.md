@@ -1,4 +1,4 @@
-# Company Performance Prediction — MLOps Pipeline
+# Company Performance Prediction: MLOps Pipeline
 
 **Course:** MLOps and System Design (EADA, 2026)
 
@@ -6,7 +6,7 @@
 
 ## 1. Project Title
 
-**Company Performance Prediction — A Reproducible Batch MLOps Pipeline**
+**Company Performance Prediction: A Reproducible Batch MLOps Pipeline**
 
 We built an end-to-end machine learning pipeline that forecasts each company's **next-year revenue growth** from its current-year fundamentals, stock behaviour, and macroeconomic context. The system is designed as a **batch, offline-first** workflow with MLflow experiment tracking, automated testing, and continuous deployment of retrained model artifacts.
 
@@ -50,7 +50,7 @@ The course grades **pipeline mechanics** (structure, reproducibility, MLflow, CI
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Split type | **Chronological** — no shuffle | Mimics real forecasting: train on the past, evaluate on a future holdout |
+| Split type | **Chronological** (no shuffle) | Mimics real forecasting: train on the past, evaluate on a future holdout |
 | Training years | 2018–2022 (2,500 rows) | Five years of history per company |
 | Test holdout | Fiscal year **2023** (500 rows) | Labels reflect 2024 performance; simulates backtesting |
 | Forward scoring (production) | Feature year **2025** → predict **2026** | Separate on-demand batch workflow, not the same as the 2023 evaluation holdout |
@@ -72,10 +72,10 @@ The course grades **pipeline mechanics** (structure, reproducibility, MLflow, CI
 fetch  →  features  →  train  →  predict
 ```
 
-1. **`fetch`** — Load or generate raw company-year snapshots into `datasets/raw/`.
-2. **`features`** — Engineer leakage-safe features; write `features.csv` and the on-demand scoring set.
-3. **`train`** — Compare four sklearn models with MLflow; persist the best model by test RMSE.
-4. **`predict`** — Score the 2025 feature year and write 2026 revenue-growth predictions for 500 companies.
+1. **`fetch`**: load or generate raw company-year snapshots into `datasets/raw/`.
+2. **`features`**: engineer leakage-safe features; write `features.csv` and the on-demand scoring set.
+3. **`train`**: compare four sklearn models with MLflow; persist the best model by test RMSE.
+4. **`predict`**: score the 2025 feature year and write 2026 revenue-growth predictions for 500 companies.
 
 ---
 
@@ -101,7 +101,7 @@ All models use the same preprocessing pipeline: **`StandardScaler` + estimator**
 | Random Forest | 0.0932 | 0.1162 | −0.0790 | 0.668 |
 | Gradient Boosting | 0.0915 | 0.1143 | −0.0437 | 0.684 |
 
-*Source: `models/metadata.json` — test partition, fiscal year 2023 (labels = 2024 performance).*
+*Source: `models/metadata.json`, test partition, fiscal year 2023 (labels = 2024 performance).*
 
 ### 3.3 Why Ridge was selected
 
@@ -145,7 +145,7 @@ We delivered a **reproducible batch MLOps pipeline** that ingests company-year d
 - MLflow experiment logging, CI (lint + pytest), and CD (retrain + commit `models/`)
 - Persisted artifacts: `models/model.joblib`, `models/metadata.json`, `batch_prediction_dataset/on_demand_predictions.csv`
 
-**Final model:** Ridge regression — test RMSE **0.1125**, MAE **0.0906**, directional accuracy **68.8%** on the 2023 holdout.
+**Final model:** Ridge regression: test RMSE **0.1125**, MAE **0.0906**, directional accuracy **68.8%** on the 2023 holdout.
 
 **Forward predictions:** The pipeline scored **500 companies** for **2026** revenue growth (using 2025 features). Mean predicted growth ≈ **5.0%** (range ≈ 2.3%–8.6%). These are batch outputs for demonstration; the course emphasises pipeline design over alpha generation.
 
