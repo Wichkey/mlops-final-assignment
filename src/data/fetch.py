@@ -1,4 +1,4 @@
-"""Data ingestion: synthetic panel generation and optional live API refresh."""
+"""Data ingestion from yfinance and FRED."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ SNAPSHOT_FILES = (
     "fundamentals_snapshot.csv",
     "stock_snapshot.csv",
     "macro_snapshot.csv",
-    "synthetic_company_year_panel.csv",
 )
 
 FUNDAMENTAL_COLUMNS = [
@@ -63,156 +62,12 @@ def _snapshot_paths(raw_dir: Path) -> dict[str, Path]:
     return {name: raw_dir / name for name in SNAPSHOT_FILES}
 
 
-def snapshots_exist(config: dict[str, Any] | None = None) -> bool:
-    """Return True when all committed raw snapshot CSVs are present."""
-    config = config or load_config()
-    paths = _snapshot_paths(_raw_dir(config))
-    return all(path.is_file() for path in paths.values())
-
-
-def _assign_tickers(n_companies: int, tickers: list[str]) -> pd.DataFrame:
-    rows = []
-    for index in range(n_companies):
-        company_id = f"COMP_{index + 1:04d}"
-        if index < len(tickers):
-            ticker = tickers[index]
-        else:
-            ticker = f"SYN_{index + 1:04d}"
-        rows.append({"company_id": company_id, "ticker": ticker})
-    return pd.DataFrame(rows)
-
-
-def _generate_synthetic_macro(
-    years: list[int],
-    rng: np.random.Generator,
-) -> pd.DataFrame:
-    gdp_growth = rng.normal(2.4, 0.8, size=len(years))
-    dgs10 = np.clip(rng.normal(2.8, 0.9, size=len(years)), 0.5, None)
-    cpi_base = 240.0
-    cpi_levels = []
-    for growth in rng.normal(2.5, 1.0, size=len(years)):
-        cpi_base *= 1 + growth / 100
-        cpi_levels.append(cpi_base)
-    unrate = np.clip(rng.normal(4.5, 1.2, size=len(years)), 2.5, None)
-
+def _assign_tickers(tickers: list[str]) -> pd.DataFrame:
     return pd.DataFrame(
-        {
-            "fiscal_year": years,
-            "gdp_growth": np.round(gdp_growth, 4),
-            "dgs10": np.round(dgs10, 4),
-            "cpi": np.round(cpi_levels, 4),
-            "unrate": np.round(unrate, 4),
-        }
-    )
-
-
-def _generate_synthetic_fundamentals(
-    companies: pd.DataFrame,
-    years: list[int],
-    rng: np.random.Generator,
-) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-    for _, company in companies.iterrows():
-        revenue = float(rng.uniform(5e8, 2e11))
-        gross_margin = float(rng.uniform(0.25, 0.55))
-        op_margin = float(gross_margin * rng.uniform(0.35, 0.75))
-        net_margin = float(op_margin * rng.uniform(0.55, 0.9))
-        asset_turnover = float(rng.uniform(0.4, 1.6))
-        equity_ratio = float(rng.uniform(0.35, 0.65))
-        liability_share = float(rng.uniform(0.15, 0.35))
-        current_ratio = float(rng.uniform(0.9, 2.4))
-
-        for year in years:
-            growth = float(rng.normal(0.06, 0.12))
-            revenue = max(revenue * (1 + growth), 1e7)
-
-            total_assets = revenue / asset_turnover
-            total_equity = total_assets * equity_ratio
-            total_debt = max(total_assets - total_equity, 0.0)
-            current_liabilities = total_assets * liability_share
-            current_assets = current_liabilities * current_ratio
-
-            rows.append(
-                {
-                    "company_id": company["company_id"],
-                    "ticker": company["ticker"],
-                    "fiscal_year": year,
-                    "revenue": round(revenue, 2),
-                    "gross_profit": round(revenue * gross_margin, 2),
-                    "operating_income": round(revenue * op_margin, 2),
-                    "net_income": round(revenue * net_margin, 2),
-                    "total_assets": round(total_assets, 2),
-                    "total_equity": round(total_equity, 2),
-                    "total_debt": round(total_debt, 2),
-                    "current_assets": round(current_assets, 2),
-                    "current_liabilities": round(current_liabilities, 2),
-                    "free_cash_flow": round(
-                        revenue * net_margin * rng.uniform(0.6, 1.1),
-                        2,
-                    ),
-                }
-            )
-    return pd.DataFrame(rows, columns=FUNDAMENTAL_COLUMNS)
-
-
-def _generate_synthetic_stock(
-    fundamentals: pd.DataFrame,
-    rng: np.random.Generator,
-) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-    for _, row in fundamentals.iterrows():
-        rows.append(
-            {
-                "company_id": row["company_id"],
-                "ticker": row["ticker"],
-                "fiscal_year": row["fiscal_year"],
-                "annual_return": round(float(rng.normal(0.1, 0.22)), 6),
-                "annual_volatility": round(float(rng.uniform(0.18, 0.45)), 6),
-                "market_cap": round(
-                    float(row["revenue"] * rng.uniform(1.5, 7.0)),
-                    2,
-                ),
-            }
-        )
-    return pd.DataFrame(rows, columns=STOCK_COLUMNS)
-
-
-def _build_panel(
-    fundamentals: pd.DataFrame,
-    stock: pd.DataFrame,
-    macro: pd.DataFrame,
-) -> pd.DataFrame:
-    panel = fundamentals.merge(
-        stock,
-        on=["company_id", "ticker", "fiscal_year"],
-        how="left",
-    )
-    return panel.merge(macro, on="fiscal_year", how="left")
-
-
-def generate_synthetic_snapshots(
-    config: dict[str, Any] | None = None,
-) -> dict[str, Path]:
-    """Generate and write reproducible synthetic raw snapshots."""
-    config = config or load_config()
-    fetch_cfg = config["fetch"]
-    n_companies = int(fetch_cfg["n_companies"])
-    years = [int(year) for year in fetch_cfg["synthetic_years"]]
-    seed = int(config["random_seed"])
-
-    rng = np.random.default_rng(seed)
-    companies = _assign_tickers(n_companies, config["tickers"])
-    macro = _generate_synthetic_macro(years, rng)
-    fundamentals = _generate_synthetic_fundamentals(companies, years, rng)
-    stock = _generate_synthetic_stock(fundamentals, rng)
-    panel = _build_panel(fundamentals, stock, macro)
-
-    return write_snapshots(
-        fundamentals=fundamentals,
-        stock=stock,
-        macro=macro,
-        panel=panel,
-        config=config,
+        [
+            {"company_id": f"COMP_{index + 1:04d}", "ticker": ticker}
+            for index, ticker in enumerate(tickers)
+        ]
     )
 
 
@@ -220,7 +75,6 @@ def write_snapshots(
     fundamentals: pd.DataFrame,
     stock: pd.DataFrame,
     macro: pd.DataFrame,
-    panel: pd.DataFrame,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
     """Persist snapshot CSVs to the configured raw data directory."""
@@ -231,30 +85,42 @@ def write_snapshots(
     fundamentals.to_csv(outputs["fundamentals_snapshot.csv"], index=False)
     stock.to_csv(outputs["stock_snapshot.csv"], index=False)
     macro.to_csv(outputs["macro_snapshot.csv"], index=False)
-    panel.to_csv(outputs["synthetic_company_year_panel.csv"], index=False)
 
     logger.info(
         "Wrote raw snapshots to %s (%d company-year rows)",
         raw_dir,
-        len(panel),
+        len(fundamentals),
     )
     return outputs
+
+
+def _fetch_fred_series(
+    series_id: str,
+    start: datetime,
+    end: datetime,
+) -> pd.Series:
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    frame = pd.read_csv(
+        url,
+        parse_dates=["observation_date"],
+        index_col="observation_date",
+    )
+    value_column = frame.columns[0]
+    series = pd.to_numeric(frame[value_column], errors="coerce")
+    return series.loc[start:end]
 
 
 def _annual_macro_from_fred(
     years: list[int],
     fred_cfg: dict[str, str],
 ) -> pd.DataFrame:
-    import pandas_datareader.data as web
-
     start = datetime(min(years), 1, 1)
     end = datetime(max(years), 12, 31)
     series_frames: dict[str, pd.Series] = {}
 
     for column, series_id in fred_cfg.items():
         logger.info("Fetching FRED series %s (%s)", column, series_id)
-        frame = web.DataReader(series_id, "fred", start, end)
-        series_frames[column] = frame[series_id]
+        series_frames[column] = _fetch_fred_series(series_id, start, end)
 
     macro_rows: list[dict[str, Any]] = []
     for year in years:
@@ -288,24 +154,21 @@ def _annual_macro_from_fred(
         macro_rows.append(row)
 
     macro = pd.DataFrame(macro_rows, columns=MACRO_COLUMNS)
+    macro = macro.sort_values("fiscal_year")
+    for column in ["gdp_growth", "dgs10", "cpi", "unrate"]:
+        macro[column] = macro[column].ffill().bfill()
+
     if macro[["gdp_growth", "dgs10", "cpi", "unrate"]].isna().any().any():
-        logger.warning(
-            "FRED macro series contain gaps; filling from synthetic macro",
-        )
-        synthetic_macro = _generate_synthetic_macro(
-            years,
-            np.random.default_rng(42),
-        )
-        macro = macro.set_index("fiscal_year")
-        synthetic_macro = synthetic_macro.set_index("fiscal_year")
-        macro = macro.combine_first(synthetic_macro).reset_index()
-    return macro
+        raise RuntimeError("FRED macro series contain unfillable gaps")
+
+    return macro.reset_index(drop=True)
 
 
 def _live_stock_metrics(ticker: str, years: list[int]) -> pd.DataFrame:
     import yfinance as yf
 
-    history = yf.Ticker(ticker).history(
+    stock = yf.Ticker(ticker)
+    history = stock.history(
         start=f"{min(years) - 1}-01-01",
         end=f"{max(years) + 1}-01-01",
         auto_adjust=True,
@@ -313,6 +176,7 @@ def _live_stock_metrics(ticker: str, years: list[int]) -> pd.DataFrame:
     if history.empty:
         raise ValueError(f"No price history for {ticker}")
 
+    shares_outstanding = stock.fast_info.get("shares")
     annual_rows: list[dict[str, Any]] = []
     for year in years:
         year_prices = history.loc[f"{year}-01-01":f"{year}-12-31"]["Close"]
@@ -325,7 +189,11 @@ def _live_stock_metrics(ticker: str, years: list[int]) -> pd.DataFrame:
         annual_return = float(year_prices.iloc[-1] / prev_prices.iloc[-1] - 1)
         daily_returns = year_prices.pct_change().dropna()
         annual_volatility = float(daily_returns.std() * np.sqrt(252))
-        market_cap = float(year_prices.iloc[-1] * 1e9)
+        year_end_price = float(year_prices.iloc[-1])
+        if shares_outstanding:
+            market_cap = year_end_price * float(shares_outstanding)
+        else:
+            market_cap = np.nan
 
         annual_rows.append(
             {
@@ -333,7 +201,7 @@ def _live_stock_metrics(ticker: str, years: list[int]) -> pd.DataFrame:
                 "fiscal_year": year,
                 "annual_return": round(annual_return, 6),
                 "annual_volatility": round(annual_volatility, 6),
-                "market_cap": round(market_cap, 2),
+                "market_cap": round(market_cap, 2) if pd.notna(market_cap) else np.nan,
             }
         )
 
@@ -341,6 +209,24 @@ def _live_stock_metrics(ticker: str, years: list[int]) -> pd.DataFrame:
         raise ValueError(f"Could not derive annual stock metrics for {ticker}")
 
     return pd.DataFrame(annual_rows)
+
+
+def _fiscal_year_from_column(column: Any) -> int:
+    if hasattr(column, "year"):
+        return int(column.year)
+    return int(pd.Timestamp(column).year)
+
+
+def _statement_value(
+    frame: pd.DataFrame,
+    label: str,
+    column: Any,
+) -> float:
+    if label in frame.index:
+        value = frame.loc[label, column]
+        if pd.notna(value):
+            return float(value)
+    return np.nan
 
 
 def _live_fundamentals(ticker: str, years: list[int]) -> pd.DataFrame:
@@ -356,80 +242,60 @@ def _live_fundamentals(ticker: str, years: list[int]) -> pd.DataFrame:
 
     rows: list[dict[str, Any]] = []
     for column in income.columns:
-        fiscal_year = int(getattr(column, "year", column))
+        fiscal_year = _fiscal_year_from_column(column)
         if fiscal_year not in years:
             continue
 
         revenue = _statement_value(income, "Total Revenue", column)
-        gross_profit = _statement_value(
-            income,
-            "Gross Profit",
-            column,
-            revenue * 0.4,
-        )
-        operating_income = _statement_value(
-            income,
-            "Operating Income",
-            column,
-            revenue * 0.15,
-        )
-        net_income = _statement_value(
-            income,
-            "Net Income",
-            column,
-            operating_income * 0.7,
-        )
-        total_assets = _statement_value(
-            balance,
-            "Total Assets",
-            column,
-            revenue * 1.2,
-        )
-        total_equity = _statement_value(
-            balance,
-            "Stockholders Equity",
-            column,
-            total_assets * 0.5,
-        )
-        total_debt = _statement_value(
-            balance,
-            "Total Debt",
-            column,
-            total_assets * 0.3,
-        )
-        current_assets = _statement_value(
-            balance,
-            "Current Assets",
-            column,
-            total_assets * 0.25,
-        )
+        gross_profit = _statement_value(income, "Gross Profit", column)
+        operating_income = _statement_value(income, "Operating Income", column)
+        net_income = _statement_value(income, "Net Income", column)
+        total_assets = _statement_value(balance, "Total Assets", column)
+        total_equity = _statement_value(balance, "Stockholders Equity", column)
+        total_debt = _statement_value(balance, "Total Debt", column)
+        current_assets = _statement_value(balance, "Current Assets", column)
         current_liabilities = _statement_value(
             balance,
             "Current Liabilities",
             column,
-            total_assets * 0.15,
         )
-        free_cash_flow = _statement_value(
-            cashflow,
-            "Free Cash Flow",
-            column,
-            net_income * 0.8,
-        )
+        free_cash_flow = _statement_value(cashflow, "Free Cash Flow", column)
+
+        if pd.isna(revenue):
+            continue
 
         rows.append(
             {
                 "ticker": ticker,
                 "fiscal_year": fiscal_year,
                 "revenue": round(float(revenue), 2),
-                "gross_profit": round(float(gross_profit), 2),
-                "operating_income": round(float(operating_income), 2),
-                "net_income": round(float(net_income), 2),
-                "total_assets": round(float(total_assets), 2),
-                "total_equity": round(float(total_equity), 2),
-                "total_debt": round(float(total_debt), 2),
-                "current_assets": round(float(current_assets), 2),
-                "current_liabilities": round(float(current_liabilities), 2),
-                "free_cash_flow": round(float(free_cash_flow), 2),
+                "gross_profit": round(float(gross_profit), 2)
+                if pd.notna(gross_profit)
+                else np.nan,
+                "operating_income": round(float(operating_income), 2)
+                if pd.notna(operating_income)
+                else np.nan,
+                "net_income": round(float(net_income), 2)
+                if pd.notna(net_income)
+                else np.nan,
+                "total_assets": round(float(total_assets), 2)
+                if pd.notna(total_assets)
+                else np.nan,
+                "total_equity": round(float(total_equity), 2)
+                if pd.notna(total_equity)
+                else np.nan,
+                "total_debt": round(float(total_debt), 2)
+                if pd.notna(total_debt)
+                else np.nan,
+                "current_assets": round(float(current_assets), 2)
+                if pd.notna(current_assets)
+                else np.nan,
+                "current_liabilities": round(float(current_liabilities), 2)
+                if pd.notna(current_liabilities)
+                else np.nan,
+                "free_cash_flow": round(float(free_cash_flow), 2)
+                if pd.notna(free_cash_flow)
+                else np.nan,
             }
         )
 
@@ -439,46 +305,26 @@ def _live_fundamentals(ticker: str, years: list[int]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _statement_value(
-    frame: pd.DataFrame,
-    label: str,
-    column: Any,
-    default: float,
-) -> float:
-    if label in frame.index:
-        value = frame.loc[label, column]
-        if pd.notna(value):
-            return float(value)
-    return float(default)
-
-
-def fetch_live_snapshots(
+def fetch_snapshots(
     config: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
-    """Refresh snapshots from yfinance and FRED with synthetic fallback."""
+    """Fetch company and macro snapshots from yfinance and FRED."""
     config = config or load_config()
     fetch_cfg = config["fetch"]
-    years = [int(year) for year in fetch_cfg["synthetic_years"]]
-    n_companies = int(fetch_cfg["n_companies"])
+    years = [int(year) for year in fetch_cfg["fiscal_years"]]
     tickers = config["tickers"]
 
-    companies = _assign_tickers(n_companies, tickers)
+    companies = _assign_tickers(tickers)
     macro = _annual_macro_from_fred(years, config["fred"])
 
-    synthetic = generate_synthetic_snapshots(config)
-    synthetic_panel = pd.read_csv(
-        synthetic["synthetic_company_year_panel.csv"],
-    )
-    fundamentals = synthetic_panel[FUNDAMENTAL_COLUMNS].copy()
-    stock = synthetic_panel[STOCK_COLUMNS].copy()
+    fundamentals_frames: list[pd.DataFrame] = []
+    stock_frames: list[pd.DataFrame] = []
 
-    live_tickers = tickers[: min(len(tickers), n_companies)]
-    for ticker in live_tickers:
-        company_rows = companies.loc[
+    for ticker in tickers:
+        company_id = companies.loc[
             companies["ticker"] == ticker,
             "company_id",
-        ]
-        company_id = company_rows.iloc[0]
+        ].iloc[0]
         try:
             live_fundamentals = _live_fundamentals(ticker, years)
             live_stock = _live_stock_metrics(ticker, years)
@@ -488,60 +334,29 @@ def fetch_live_snapshots(
 
         live_fundamentals["company_id"] = company_id
         live_stock["company_id"] = company_id
+        fundamentals_frames.append(live_fundamentals)
+        stock_frames.append(live_stock)
+        logger.info("Fetched live data for %s (%s)", ticker, company_id)
 
-        fundamentals = _replace_company_rows(
-            fundamentals,
-            company_id,
-            live_fundamentals,
-        )
-        stock = _replace_company_rows(stock, company_id, live_stock)
-        logger.info("Updated live data for %s (%s)", ticker, company_id)
+    if not fundamentals_frames:
+        raise RuntimeError("No live company data could be fetched")
 
-    panel = _build_panel(fundamentals, stock, macro)
+    fundamentals = pd.concat(fundamentals_frames, ignore_index=True)
+    stock = pd.concat(stock_frames, ignore_index=True)
+    fundamentals = fundamentals[FUNDAMENTAL_COLUMNS]
+    stock = stock[STOCK_COLUMNS]
+
     return write_snapshots(
         fundamentals=fundamentals,
         stock=stock,
         macro=macro,
-        panel=panel,
         config=config,
     )
 
 
-def _replace_company_rows(
-    frame: pd.DataFrame,
-    company_id: str,
-    replacement: pd.DataFrame,
-) -> pd.DataFrame:
-    remaining = frame[frame["company_id"] != company_id]
-    ordered_columns = frame.columns.tolist()
-    replacement = replacement[ordered_columns]
-    return pd.concat([remaining, replacement], ignore_index=True)
-
-
-def ensure_committed_snapshots(
-    config: dict[str, Any] | None = None,
-) -> dict[str, Path]:
-    """Ensure offline snapshots exist, generating synthetic data if needed."""
-    config = config or load_config()
-    raw_dir = ensure_dir(_raw_dir(config))
-    paths = _snapshot_paths(raw_dir)
-
-    if snapshots_exist(config):
-        logger.info("Raw snapshots already present in %s", raw_dir)
-        return paths
-
-    logger.info("Raw snapshots missing; generating synthetic panel")
-    return generate_synthetic_snapshots(config)
-
-
 def run_fetch(config: dict[str, Any] | None = None) -> dict[str, Path]:
-    """Run the fetch stage using live APIs or offline synthetic snapshots."""
+    """Run the fetch stage using live yfinance and FRED APIs."""
     setup_logging()
     config = config or load_config()
-
-    if config["fetch"]["use_live_apis"]:
-        logger.info("Running live fetch via yfinance and FRED")
-        return fetch_live_snapshots(config)
-
-    logger.info("Running offline fetch (synthetic snapshots when missing)")
-    return ensure_committed_snapshots(config)
+    logger.info("Running live fetch via yfinance and FRED")
+    return fetch_snapshots(config)

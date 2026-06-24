@@ -173,9 +173,7 @@ fred:
   unrate: UNRATE
 
 fetch:
-  use_live_apis: false
-  n_companies: 500
-  synthetic_years:
+  fiscal_years:
     - 2018
     - 2019
     - 2020
@@ -193,6 +191,18 @@ training:
     - ridge
     - random_forest
     - gradient_boosting
+  hyperparameters:
+    ridge:
+      alpha: 1000.0
+    random_forest:
+      n_estimators: 200
+      max_depth: 6
+      min_samples_leaf: 25
+    gradient_boosting:
+      n_estimators: 150
+      max_depth: 3
+      learning_rate: 0.05
+      subsample: 0.8
 
 prediction:
   feature_year: 2025
