@@ -24,19 +24,6 @@ RAW_FINANCIAL_COLUMNS = [
     "free_cash_flow",
 ]
 
-RAW_STOCK_COLUMNS = [
-    "annual_return",
-    "annual_volatility",
-    "market_cap",
-]
-
-RAW_MACRO_COLUMNS = [
-    "gdp_growth",
-    "dgs10",
-    "cpi",
-    "unrate",
-]
-
 ENGINEERED_FEATURE_COLUMNS = [
     "gross_margin",
     "operating_margin",
@@ -55,7 +42,6 @@ ENGINEERED_FEATURE_COLUMNS = [
     "dgs10",
     "cpi",
     "unrate",
-    "ticker_code",
 ]
 
 TARGET_COLUMNS = [
@@ -107,10 +93,6 @@ def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
     return pd.Series(result, index=numerator.index)
 
 
-def _encode_tickers(tickers: pd.Series) -> pd.Series:
-    categories = pd.Categorical(tickers, categories=sorted(tickers.unique()))
-    return pd.Series(categories.codes, index=tickers.index, dtype=int)
-
 
 def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
     frame = panel.copy()
@@ -160,7 +142,6 @@ def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
         frame.groupby("company_id")["revenue"].shift(-1),
     )
 
-    frame["ticker_code"] = _encode_tickers(frame["ticker"])
     return frame
 
 

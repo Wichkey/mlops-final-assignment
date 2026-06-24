@@ -40,7 +40,7 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("fetch", help="Fetch or generate raw data snapshots")
+    subparsers.add_parser("fetch", help="Fetch raw data snapshots from live APIs")
     subparsers.add_parser("features", help="Engineer features from raw data")
     subparsers.add_parser("train", help="Train and compare models")
     subparsers.add_parser("predict", help="Run on-demand batch predictions")

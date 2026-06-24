@@ -1,5 +1,5 @@
 {
-  "model_name": "ridge",
+  "model_name": "random_forest",
   "target_column": "target_revenue_growth",
   "test_year": 2023,
   "feature_columns": [
@@ -19,79 +19,78 @@
     "fcf_margin",
     "asset_turnover",
     "log_market_cap",
-    "prior_revenue_growth",
-    "ticker_code"
+    "prior_revenue_growth"
   ],
-  "train_rows": 2500,
-  "test_rows": 500,
+  "train_rows": 89,
+  "test_rows": 104,
   "models": {
     "linear_regression": {
       "train_metrics": {
-        "mae": 0.09563699408041466,
-        "rmse": 0.12039619123444825,
-        "r2": 0.007945527872467162,
-        "directional_accuracy": 0.6868
+        "mae": 0.07555058939213784,
+        "rmse": 0.09999982105686954,
+        "r2": 0.1580530620064423,
+        "directional_accuracy": 0.6966292134831461
       },
       "test_metrics": {
-        "mae": 0.0906248566137601,
-        "rmse": 0.11248307705460396,
-        "r2": -0.011309171798126405,
-        "directional_accuracy": 0.688
+        "mae": 0.0917317409591749,
+        "rmse": 0.1690015631410056,
+        "r2": -0.2598475359875383,
+        "directional_accuracy": 0.6634615384615384
       }
     },
     "ridge": {
       "train_metrics": {
-        "mae": 0.09563807959026745,
-        "rmse": 0.12039622953111562,
-        "r2": 0.007944896749741748,
-        "directional_accuracy": 0.6868
+        "mae": 0.08104565082975008,
+        "rmse": 0.10791887870256416,
+        "r2": 0.019424304409110693,
+        "directional_accuracy": 0.7078651685393258
       },
       "test_metrics": {
-        "mae": 0.09062215747983073,
-        "rmse": 0.11247539637678111,
-        "r2": -0.01117106613928498,
-        "directional_accuracy": 0.688
+        "mae": 0.07956601067556011,
+        "rmse": 0.15211715253812585,
+        "r2": -0.02068779687063338,
+        "directional_accuracy": 0.7307692307692307
       }
     },
     "random_forest": {
       "train_metrics": {
-        "mae": 0.03662408146965574,
-        "rmse": 0.0465370797399629,
-        "r2": 0.8517794987730551,
-        "directional_accuracy": 0.9156
+        "mae": 0.07765307426396936,
+        "rmse": 0.10483359521240332,
+        "r2": 0.07469004193926987,
+        "directional_accuracy": 0.7078651685393258
       },
       "test_metrics": {
-        "mae": 0.09323411732280804,
-        "rmse": 0.11618608419470397,
-        "r2": -0.078990943342782,
-        "directional_accuracy": 0.668
+        "mae": 0.07770657676366874,
+        "rmse": 0.14758857005903797,
+        "r2": 0.039180081170150705,
+        "directional_accuracy": 0.7307692307692307
       }
     },
     "gradient_boosting": {
       "train_metrics": {
-        "mae": 0.08562792909619646,
-        "rmse": 0.10770494957517127,
-        "r2": 0.2060715837651047,
-        "directional_accuracy": 0.7024
+        "mae": 0.01797875482570295,
+        "rmse": 0.021625846339641753,
+        "r2": 0.9606239179096887,
+        "directional_accuracy": 0.9325842696629213
       },
       "test_metrics": {
-        "mae": 0.09154546103818467,
-        "rmse": 0.11426948657487551,
-        "r2": -0.04368663360921854,
-        "directional_accuracy": 0.684
+        "mae": 0.09321436451920317,
+        "rmse": 0.1631830362849518,
+        "r2": -0.17459072477300808,
+        "directional_accuracy": 0.6153846153846154
       }
     }
   },
   "train_metrics": {
-    "mae": 0.09563807959026745,
-    "rmse": 0.12039622953111562,
-    "r2": 0.007944896749741748,
-    "directional_accuracy": 0.6868
+    "mae": 0.07765307426396936,
+    "rmse": 0.10483359521240332,
+    "r2": 0.07469004193926987,
+    "directional_accuracy": 0.7078651685393258
   },
   "test_metrics": {
-    "mae": 0.09062215747983073,
-    "rmse": 0.11247539637678111,
-    "r2": -0.01117106613928498,
-    "directional_accuracy": 0.688
+    "mae": 0.07770657676366874,
+    "rmse": 0.14758857005903797,
+    "r2": 0.039180081170150705,
+    "directional_accuracy": 0.7307692307692307
   }
 }

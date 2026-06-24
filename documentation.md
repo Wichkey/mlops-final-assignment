@@ -4,152 +4,182 @@
 
 ---
 
-## 1. Project Title
+## 1. Problem Statement and Analysis
 
-**Company Performance Prediction: A Reproducible Batch MLOps Pipeline**
+### 1.1 Problem description
 
-We built an end-to-end machine learning pipeline that forecasts each company's **next-year revenue growth** from its current-year fundamentals, stock behaviour, and macroeconomic context. The system is designed as a **batch, offline-first** workflow with MLflow experiment tracking, automated testing, and continuous deployment of retrained model artifacts.
+We predict each company's **next-year revenue growth** from its current-year fundamentals, stock behaviour, and macroeconomic context. Each row in the dataset is one **(company, fiscal_year)** pair at year **t**; the label is performance in year **t+1**.
 
----
+The business question: *given what we know about a company today, how will its revenue grow next year?*
 
-## 2. Problem Statement
+### 1.2 Problem type
 
-### 2.1 Business problem
+**Regression.** The target is a continuous ratio:
 
-Investors and analysts routinely ask: *given what we know about a company today, how will it perform next year?* We frame this as a **supervised regression** problem on a **company–year panel**: each row is one company at fiscal year **t**, and the label is performance in year **t+1**.
+`target_revenue_growth = revenue_{t+1} / revenue_t - 1`
 
-The course grades **pipeline mechanics** (structure, reproducibility, MLflow, CI/CD, documentation) rather than forecasting accuracy. Our goal is a runnable, auditable system a professor can execute on any machine without live API calls.
+We also support alternative targets in `config.yaml` (net-income growth, operating margin) but the final model uses revenue growth.
 
-### 2.2 Target variable
+### 1.3 System design decisions
 
-| Decision | Choice | Rationale |
+| Topic | Decision | Rationale |
 |---|---|---|
-| Primary target | `target_revenue_growth = revenue_{t+1} / revenue_t − 1` | Revenue growth is interpretable, comparable across sectors, and aligned with the course brief |
-| Alternatives considered | Net-income growth, operating margin | Supported in `config.yaml` but not used for the final model |
-| Label timing | Year **t+1** only, via `shift(-1)` per company | Prevents leakage from future information |
+| **Data source** | yfinance + FRED (live APIs) | Real fundamentals, prices, and macro indicators for configured tickers |
+| **Universe** | 168 large-cap tickers configured (US, Europe, Japan); **123** fetched live, **104** with complete feature rows | Coverage depends on yfinance API availability per ticker |
+| **Latency** | **Batch / offline** (minutes acceptable) | This is not a real-time trading system. Fetch may take minutes with live APIs; training and prediction run in seconds. No sub-second SLA is required. |
+| **Serving model** | Batch scoring via `python main.py predict` | Matches course "on-demand" workflow: load a CSV, write predictions to disk |
+| **Train/test split** | Chronological holdout (train 2018-2022, test 2023) | No shuffle; simulates forecasting on future data |
+| **Forward scoring** | Feature year 2025, predict 2026 | Separate production-style batch, distinct from the 2023 evaluation holdout |
+| **Leakage control** | Features use year **t** only; targets from year **t+1** via `shift(-1)` per company | Prevents future information entering the model |
+| **Experiment tracking** | MLflow (`sqlite:///mlflow.db`) | Compare models and satisfy course tracking requirement |
+| **Model selection** | Lowest test RMSE on chronological holdout | Simple, auditable criterion |
+| **Complexity** | Regularised tree ensembles preferred when they beat linear models on the holdout | On live data, linear models show weak or negative test R²; shallow Random Forest generalises best |
 
-### 2.3 Data strategy
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Panel size | 500 companies × fiscal years 2018–2026 | Large enough for batch ML; small enough for fast CI |
-| Default data mode | Committed **synthetic snapshots** (`fetch.use_live_apis: false`) | Reproducible runs with no network dependency in tests or CI |
-| Optional refresh | yfinance + FRED (`pandas-datareader`) | Demonstrates live ingestion without making it mandatory |
-| Raw artifacts | `fundamentals_snapshot.csv`, `stock_snapshot.csv`, `macro_snapshot.csv`, unified panel | Clear separation between ingestion and feature engineering |
-
-### 2.4 Feature engineering
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Feature year | Year **t** data only | Strict leakage control |
-| Engineered signals | 18 features: profitability ratios, returns, leverage, market metrics, macro indicators, encoded ticker | Compress raw financials into modelling-ready signals |
-| Exclusions | IDs, raw line items, all `target_*` columns | Targets must never enter `feature_columns()` |
-| Output | `datasets/processed/features.csv` (~4,000 rows) | 500 companies × 8 labelled years (2026 raw year has no t+1 label) |
-
-### 2.5 Train / test design
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Split type | **Chronological** (no shuffle) | Mimics real forecasting: train on the past, evaluate on a future holdout |
-| Training years | 2018–2022 (2,500 rows) | Five years of history per company |
-| Test holdout | Fiscal year **2023** (500 rows) | Labels reflect 2024 performance; simulates backtesting |
-| Forward scoring (production) | Feature year **2025** → predict **2026** | Separate on-demand batch workflow, not the same as the 2023 evaluation holdout |
-
-### 2.6 MLOps and system design
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| CLI entrypoint | `main.py` with `fetch`, `features`, `train`, `predict`, `all` | Single interface for the full pipeline |
-| Experiment tracking | MLflow (`sqlite:///mlflow.db`, experiment `company-performance-prediction`) | Compare runs and satisfy course MLflow requirement |
-| Model persistence | `models/model.joblib` + `models/metadata.json` | Versioned artifacts for predict and CD |
-| CI | flake8 + offline `pytest` on pull requests | Catch regressions without network calls |
-| CD | `features` + `train` on push to `main`, commit updated `models/` | Automated retraining in deployment flow |
-| On-demand predictions | `batch_prediction_dataset/on_demand_predictions.csv` | Course requirement for batch scoring |
-
-### 2.7 Pipeline steps
+### 1.4 Pipeline overview
 
 ```
 fetch  →  features  →  train  →  predict
 ```
 
-1. **`fetch`**: load or generate raw company-year snapshots into `datasets/raw/`.
+1. **`fetch`**: download raw snapshots from yfinance and FRED into `datasets/raw/`.
 2. **`features`**: engineer leakage-safe features; write `features.csv` and the on-demand scoring set.
 3. **`train`**: compare four sklearn models with MLflow; persist the best model by test RMSE.
-4. **`predict`**: score the 2025 feature year and write 2026 revenue-growth predictions for 500 companies.
+4. **`predict`**: score `batch_prediction_dataset/on_demand_dataset.csv` and write predictions.
 
 ---
 
-## 3. Model Development
+## 2. Version Control
 
-### 3.1 Models compared
+The project is hosted on **GitHub** and shared with the professor for review.
 
-All models use the same preprocessing pipeline: **`StandardScaler` + estimator**. Four algorithms were trained and logged to MLflow:
+### 2.1 Branching strategy
+
+| Branch | Purpose |
+|---|---|
+| `main` | Stable, deployable code; CD retrains models on push |
+| `development` | Integration branch for merged feature work |
+| `feat/*` | Short-lived feature branches per teammate / deliverable |
+
+Examples used during development: `feat/project-structure`, `feat/features-and-data`, `feat/model-training`, `feat/Tests-predict-CI/CD`.
+
+### 2.2 Workflow
+
+1. Create a `feat/*` branch from `development`.
+2. Implement one scoped deliverable per branch.
+3. Open a **pull request** into `development` or `main`.
+4. **CI** runs flake8 and pytest (including a live fetch) on every PR to `main`.
+5. Merge after review; CD runs on push to `main`.
+
+### 2.3 Commit conventions
+
+Commits use prefixes such as `feat:`, `fix:`, `chore:`, `test:`, `ci:`, and `docs:` to describe the type of change.
+
+---
+
+## 3. Model Training and Experiment Tracking
+
+### 3.1 Data transformations
+
+Documented in `src/features/build_features.py` and summarised here:
+
+| Step | Transformation |
+|---|---|
+| Load raw panel | Merge fundamentals, stock, and macro snapshots |
+| Profitability | `gross_margin`, `operating_margin`, `net_margin` from income-statement line items |
+| Returns | `roa`, `roe` |
+| Leverage / liquidity | `debt_to_equity`, `current_ratio` |
+| Cash / efficiency | `fcf_margin`, `asset_turnover` |
+| Dynamics | `prior_revenue_growth` (lagged within company) |
+| Market | `annual_return`, `annual_volatility`, `log_market_cap` |
+| Macro | `gdp_growth`, `dgs10`, `cpi`, `unrate` |
+| Targets | `target_*` columns via `shift(-1)` per `company_id` (never used as features) |
+
+Output: `datasets/processed/features.csv` (**312** labeled rows, **104** companies, **17** feature columns, zero NaNs). Chronological split: **89** train rows (years before 2023), **104** test rows (year 2023).
+
+### 3.2 Models compared
+
+All models use **`StandardScaler` + estimator**:
 
 - Linear Regression
 - Ridge Regression
 - Random Forest Regressor
 - Gradient Boosting Regressor
 
-**Evaluation metrics:** MAE, RMSE, R², and directional accuracy (fraction of predictions with the correct sign vs. the actual target).
+We deliberately avoided overly complex models. Tree ensembles use shallow, regularised settings (`max_depth`, `min_samples_leaf`) to limit overfitting. Hyperparameters are defined in `config.yaml` under `training.hyperparameters`.
 
-### 3.2 Test-set results (holdout year 2023)
+### 3.3 Performance metrics
+
+Each model is evaluated on four metrics:
+
+| Metric | Description |
+|---|---|
+| **MAE** | Mean absolute error |
+| **RMSE** | Root mean squared error (model selection criterion) |
+| **R²** | Coefficient of determination |
+| **Directional accuracy** | Share of predictions with the correct sign vs. actual |
+
+### 3.4 Test-set results (holdout year 2023)
 
 | Model | MAE | RMSE | R² | Directional accuracy |
 |---|---|---|---|---|
-| Linear Regression | 0.0906 | 0.1125 | −0.0113 | 0.688 |
-| **Ridge Regression** | **0.0906** | **0.1125** | **−0.0112** | **0.688** |
-| Random Forest | 0.0932 | 0.1162 | −0.0790 | 0.668 |
-| Gradient Boosting | 0.0915 | 0.1143 | −0.0437 | 0.684 |
+| Linear Regression | 0.0917 | 0.1690 | -0.260 | 0.663 |
+| Ridge Regression | 0.0796 | 0.1521 | -0.021 | 0.731 |
+| **Random Forest** | **0.0777** | **0.1476** | **0.039** | **0.731** |
+| Gradient Boosting | 0.0932 | 0.1632 | -0.175 | 0.615 |
 
-*Source: `models/metadata.json`, test partition, fiscal year 2023 (labels = 2024 performance).*
+*Source: `models/metadata.json`, test partition (104 rows), fiscal year 2023. All metrics from live yfinance + FRED data (re-run 2026-06-24).*
 
-### 3.3 Why Ridge was selected
+### 3.5 Chosen model
 
-**Ridge regression** was chosen as the production model because it achieved the **lowest test RMSE (0.1125)** among all candidates.
+**Random forest** was selected (lowest test RMSE: **0.1476**, test R² **0.039**, directional accuracy **73.1%**). On real market data, revenue growth is harder to predict than on the earlier synthetic panel: linear models overfit or fail to generalise (negative test R²), while a shallow, regularised Random Forest achieves the best holdout RMSE. Gradient boosting overfits severely (train R² 0.96, test R² -0.17).
 
-Tree-based models (Random Forest, Gradient Boosting) showed clear **overfitting**: strong train R² (up to 0.85 for Random Forest) but worse test RMSE and negative test R². Ridge and Linear Regression generalised best on the chronological holdout; Ridge edged out Linear Regression on RMSE while applying mild L2 regularisation, which is preferable when features are correlated (financial ratios and macro variables).
+### 3.6 MLflow and Jupyter
 
-Model selection criterion: **lowest test RMSE** on the 2023 holdout (configured via `training.test_year` in `config.yaml`).
-
-### 3.4 MLflow experiments
-
-Runs are logged to the `company-performance-prediction` experiment. To reproduce the UI locally:
+- **MLflow**: experiment `company-performance-prediction`, tracking URI `sqlite:///mlflow.db`
+- **Notebook**: `notebooks/model_experiments.ipynb` rebuilds features, runs training, and compares models
 
 ```bash
 mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
 
-Open http://127.0.0.1:5000 and select the experiment to inspect parameters and metrics per run.
-
-**Experiment runs (latest test metrics per model):**
-
 ![MLflow experiment runs](docs/images/mlflow-experiment-runs.png)
-
-**Metric comparison across models:**
 
 ![MLflow metrics comparison](docs/images/mlflow-metrics-comparison.png)
 
-Additional analysis is available in `notebooks/model_experiments.ipynb`.
-
 ---
 
-## 4. Conclusions
+## 4. Project Structure
 
-We delivered a **reproducible batch MLOps pipeline** that ingests company-year data, engineers leakage-safe features, trains and compares four regression models with MLflow tracking, and produces on-demand predictions for fiscal year 2026.
+```
+main.py                          # CLI entrypoint
+config.yaml                      # paths, tickers, hyperparameters
+requirements.txt                 # pinned dependencies
+documentation.md                 # this file
+src/
+  utils.py                         # load_config, logging helpers
+  data/fetch.py                    # data ingestion
+  features/build_features.py       # feature engineering
+  models/train.py                  # training + MLflow logging
+  models/predict.py                # on-demand batch scoring
+datasets/
+  raw/                             # fundamentals, stock, macro CSVs (generated by fetch)
+  processed/                       # features.csv (generated by features)
+models/                            # model.joblib, metadata.json
+batch_prediction_dataset/          # on_demand_dataset.csv, on_demand_predictions.csv
+tests/test_pipeline.py             # pytest suite (live fetch)
+notebooks/model_experiments.ipynb  # experiment notebook
+.github/workflows/
+  ci.yml                           # lint + pytest on pull_request
+  cd.yml                           # fetch + features + train on push to main
+```
 
-**Key components:**
+### 4.1 Dependencies
 
-- Offline-first data layer with committed snapshots and a configurable live-fetch path
-- Feature table of ~4,000 labelled rows and a separate 500-row forward-scoring batch (feature year 2025)
-- Chronological evaluation on fiscal year 2023, distinct from production-style 2026 scoring
-- MLflow experiment logging, CI (lint + pytest), and CD (retrain + commit `models/`)
-- Persisted artifacts: `models/model.joblib`, `models/metadata.json`, `batch_prediction_dataset/on_demand_predictions.csv`
+All dependencies are pinned in `requirements.txt` (pandas, scikit-learn, mlflow, pytest, etc.).
 
-**Final model:** Ridge regression: test RMSE **0.1125**, MAE **0.0906**, directional accuracy **68.8%** on the 2023 holdout.
+### 4.2 Running on the professor's machine
 
-**Forward predictions:** The pipeline scored **500 companies** for **2026** revenue growth (using 2025 features). Mean predicted growth ≈ **5.0%** (range ≈ 2.3%–8.6%). These are batch outputs for demonstration; the course emphasises pipeline design over alpha generation.
-
-Run the full pipeline:
+Requires network access for `fetch` and pytest:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -157,3 +187,57 @@ pip install -r requirements.txt
 python main.py all
 pytest tests/ -v
 ```
+
+---
+
+## 5. CI/CD Pipeline
+
+### 5.1 Continuous Integration (`.github/workflows/ci.yml`)
+
+| Setting | Value |
+|---|---|
+| **Trigger** | Pull request to `main` |
+| **Steps** | `pip install` → flake8 → `pytest` (live fetch) |
+| **Network** | Required (yfinance + FRED) |
+
+### 5.2 Continuous Deployment (`.github/workflows/cd.yml`)
+
+| Setting | Value |
+|---|---|
+| **Trigger** | Push to `main` |
+| **Steps** | `python main.py fetch` → `features` → `train` |
+| **Artifact** | Commits updated `models/model.joblib` and `models/metadata.json` back to the repo |
+
+---
+
+## 6. On-Demand Workflow
+
+The course requires a batch prediction workflow using a dataset in `batch_prediction_dataset/`.
+
+| Item | Path |
+|---|---|
+| **Input** | `batch_prediction_dataset/on_demand_dataset.csv` (**123** companies, feature year 2025) |
+| **Output** | `batch_prediction_dataset/on_demand_predictions.csv` |
+| **Command** | `python main.py predict` |
+
+The predict step loads the trained model from `models/`, scores every row in the on-demand dataset, and writes `predicted_revenue_growth` plus `predicted_for_year: 2026` to the output file in the **same directory**.
+
+```bash
+python main.py predict
+```
+
+---
+
+## 7. Conclusions
+
+We delivered a reproducible batch MLOps pipeline with:
+
+- Live data ingestion from yfinance and FRED (**492** company-year rows, **123** tickers)
+- Documented, leakage-safe feature engineering
+- Four-model comparison tracked in MLflow
+- Random forest as the final model (test RMSE 0.1476, test R² 0.039, directional accuracy 73.1%)
+- CI on pull requests and CD that retrains and commits model artifacts
+- On-demand batch predictions for **123** companies (2025 features → 2026 revenue growth)
+- All **7** pytest checks passing on live-fetched data
+
+The project prioritises **pipeline mechanics, reproducibility, and documentation** over forecasting accuracy, as required by the course.

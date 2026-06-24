@@ -22,8 +22,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run features and train
+      - name: Run fetch, features, and train
         run: |
+          python main.py fetch
           python main.py features
           python main.py train
 
