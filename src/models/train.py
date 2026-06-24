@@ -66,12 +66,35 @@ def _processed_dir(config: dict[str, Any]) -> Path:
     return ROOT_DIR / config["paths"]["processed"]
 
 
-def _build_pipeline(model_name: str, random_seed: int) -> Pipeline:
+def _build_pipeline(
+    model_name: str,
+    random_seed: int,
+    hyperparameters: dict[str, Any] | None = None,
+) -> Pipeline:
+    hp = hyperparameters or {}
     estimators: dict[str, Any] = {
         "linear_regression": LinearRegression(),
-        "ridge": Ridge(random_state=random_seed),
-        "random_forest": RandomForestRegressor(random_state=random_seed),
+        "ridge": Ridge(
+            alpha=float(hp.get("ridge", {}).get("alpha", 1.0)),
+            random_state=random_seed,
+        ),
+        "random_forest": RandomForestRegressor(
+            n_estimators=int(hp.get("random_forest", {}).get("n_estimators", 200)),
+            max_depth=hp.get("random_forest", {}).get("max_depth", 6),
+            min_samples_leaf=int(
+                hp.get("random_forest", {}).get("min_samples_leaf", 25)
+            ),
+            random_state=random_seed,
+        ),
         "gradient_boosting": GradientBoostingRegressor(
+            n_estimators=int(
+                hp.get("gradient_boosting", {}).get("n_estimators", 150)
+            ),
+            max_depth=int(hp.get("gradient_boosting", {}).get("max_depth", 3)),
+            learning_rate=float(
+                hp.get("gradient_boosting", {}).get("learning_rate", 0.05)
+            ),
+            subsample=float(hp.get("gradient_boosting", {}).get("subsample", 0.8)),
             random_state=random_seed,
         ),
     }
@@ -105,6 +128,7 @@ def train_models(config: dict[str, Any] | None = None) -> dict[str, Path]:
     feature_cols = feature_columns(frame)
     model_names = list(config["training"]["models"])
     random_seed = int(config["random_seed"])
+    hyperparameters = config["training"].get("hyperparameters", {})
 
     train_frame, test_frame = year_based_split(frame, test_year)
 
@@ -122,18 +146,21 @@ def train_models(config: dict[str, Any] | None = None) -> dict[str, Path]:
     best_test_rmse = float("inf")
 
     for model_name in model_names:
-        pipeline = _build_pipeline(model_name, random_seed)
+        pipeline = _build_pipeline(model_name, random_seed, hyperparameters)
         pipeline.fit(x_train, y_train)
 
         train_metrics = compute_metrics(y_train, pipeline.predict(x_train))
         test_metrics = compute_metrics(y_test, pipeline.predict(x_test))
 
+        model_hp = hyperparameters.get(model_name, {})
         with mlflow.start_run(run_name=model_name):
             mlflow.log_param("model", model_name)
             mlflow.log_param("target", target_column)
             mlflow.log_param("test_year", test_year)
             mlflow.log_param("n_train", n_train)
             mlflow.log_param("n_test", n_test)
+            for param_name, param_value in model_hp.items():
+                mlflow.log_param(param_name, param_value)
             for metric_name, metric_value in test_metrics.items():
                 mlflow.log_metric(metric_name, metric_value)
 
@@ -178,7 +205,7 @@ def train_models(config: dict[str, Any] | None = None) -> dict[str, Path]:
     for model_name in model_names:
         metrics = model_results[model_name]["test_metrics"]
         logger.info(
-            "%s — MAE: %.4f, RMSE: %.4f, R²: %.4f, directional: %.4f",
+            "%s - MAE: %.4f, RMSE: %.4f, R²: %.4f, directional: %.4f",
             model_name,
             metrics["mae"],
             metrics["rmse"],
