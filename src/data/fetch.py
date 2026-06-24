@@ -62,6 +62,24 @@ def _snapshot_paths(raw_dir: Path) -> dict[str, Path]:
     return {name: raw_dir / name for name in SNAPSHOT_FILES}
 
 
+def snapshots_exist(config: dict[str, Any] | None = None) -> bool:
+    """Return True when all raw snapshot CSVs are present."""
+    config = config or load_config()
+    paths = _snapshot_paths(_raw_dir(config))
+    return all(path.is_file() for path in paths.values())
+
+
+def ensure_snapshots(config: dict[str, Any] | None = None) -> dict[str, Path]:
+    """Use existing raw snapshots when present; otherwise fetch live data."""
+    config = config or load_config()
+    paths = _snapshot_paths(_raw_dir(config))
+    if snapshots_exist(config):
+        logger.info("Raw snapshots already present in %s", _raw_dir(config))
+        return paths
+    logger.info("Raw snapshots missing; fetching live data")
+    return fetch_snapshots(config)
+
+
 def _assign_tickers(tickers: list[str]) -> pd.DataFrame:
     return pd.DataFrame(
         [
