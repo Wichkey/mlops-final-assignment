@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.utils import load_config, get_target_column  # noqa: E402
-from src.data.fetch import run_fetch  # noqa: E402
+from src.data.fetch import ensure_snapshots  # noqa: E402
 from src.features.build_features import (  # noqa: E402
     TARGET_COLUMNS,
     build_features,
@@ -37,8 +37,8 @@ def config() -> dict:
 
 @pytest.fixture(scope="session")
 def feature_paths(config) -> dict:
-    """Fetch live snapshots, then build feature table."""
-    run_fetch(config)
+    """Build feature table from committed snapshots (fetch only if missing)."""
+    ensure_snapshots(config)
     return build_features(config)
 
 
