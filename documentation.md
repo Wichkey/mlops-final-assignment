@@ -25,7 +25,7 @@ We also support alternative targets in `config.yaml` (net-income growth, operati
 | Topic | Decision | Rationale |
 |---|---|---|
 | **Data source** | yfinance + FRED (live APIs) | Real fundamentals, prices, and macro indicators for configured tickers |
-| **Universe** | ~168 large-cap tickers (US, Europe, Japan), fiscal years 2018-2026 | Coverage depends on API availability per ticker |
+| **Universe** | 168 large-cap tickers configured (US, Europe, Japan); **123** fetched live, **104** with complete feature rows | Coverage depends on yfinance API availability per ticker |
 | **Latency** | **Batch / offline** (minutes acceptable) | This is not a real-time trading system. Fetch may take minutes with live APIs; training and prediction run in seconds. No sub-second SLA is required. |
 | **Serving model** | Batch scoring via `python main.py predict` | Matches course "on-demand" workflow: load a CSV, write predictions to disk |
 | **Train/test split** | Chronological holdout (train 2018-2022, test 2023) | No shuffle; simulates forecasting on future data |
@@ -33,7 +33,7 @@ We also support alternative targets in `config.yaml` (net-income growth, operati
 | **Leakage control** | Features use year **t** only; targets from year **t+1** via `shift(-1)` per company | Prevents future information entering the model |
 | **Experiment tracking** | MLflow (`sqlite:///mlflow.db`) | Compare models and satisfy course tracking requirement |
 | **Model selection** | Lowest test RMSE on chronological holdout | Simple, auditable criterion |
-| **Complexity** | Linear models preferred over tree ensembles when test performance is comparable | Random Forest overfit badly (train R² 0.85, negative test R²); Ridge generalised best |
+| **Complexity** | Regularised tree ensembles preferred when they beat linear models on the holdout | On live data, linear models show weak or negative test R²; shallow Random Forest generalises best |
 
 ### 1.4 Pipeline overview
 
@@ -94,7 +94,7 @@ Documented in `src/features/build_features.py` and summarised here:
 | Macro | `gdp_growth`, `dgs10`, `cpi`, `unrate` |
 | Targets | `target_*` columns via `shift(-1)` per `company_id` (never used as features) |
 
-Output: `datasets/processed/features.csv` (live panel rows with complete features, zero NaNs).
+Output: `datasets/processed/features.csv` (**312** labeled rows, **104** companies, **17** feature columns, zero NaNs). Chronological split: **89** train rows (years before 2023), **104** test rows (year 2023).
 
 ### 3.2 Models compared
 
@@ -122,16 +122,16 @@ Each model is evaluated on four metrics:
 
 | Model | MAE | RMSE | R² | Directional accuracy |
 |---|---|---|---|---|
-| **Linear Regression** | **0.0376** | **0.0467** | **0.401** | **0.910** |
-| Ridge Regression | 0.0378 | 0.0472 | 0.388 | 0.914 |
-| Random Forest | 0.0378 | 0.0472 | 0.388 | 0.914 |
-| Gradient Boosting | 0.0377 | 0.0473 | 0.387 | 0.914 |
+| Linear Regression | 0.0917 | 0.1690 | -0.260 | 0.663 |
+| Ridge Regression | 0.0796 | 0.1521 | -0.021 | 0.731 |
+| **Random Forest** | **0.0777** | **0.1476** | **0.039** | **0.731** |
+| Gradient Boosting | 0.0932 | 0.1632 | -0.175 | 0.615 |
 
-*Source: `models/metadata.json`, test partition, fiscal year 2023.*
+*Source: `models/metadata.json`, test partition (104 rows), fiscal year 2023. All metrics from live yfinance + FRED data (re-run 2026-06-24).*
 
 ### 3.5 Chosen model
 
-**Linear regression** was selected (lowest test RMSE: **0.0467**, test R² **0.40**). With tuned, regularised tree models, all four candidates perform similarly on the holdout; the simple linear model generalises best by RMSE while staying easy to interpret.
+**Random forest** was selected (lowest test RMSE: **0.1476**, test R² **0.039**, directional accuracy **73.1%**). On real market data, revenue growth is harder to predict than on the earlier synthetic panel: linear models overfit or fail to generalise (negative test R²), while a shallow, regularised Random Forest achieves the best holdout RMSE. Gradient boosting overfits severely (train R² 0.96, test R² -0.17).
 
 ### 3.6 MLflow and Jupyter
 
@@ -216,7 +216,7 @@ The course requires a batch prediction workflow using a dataset in `batch_predic
 
 | Item | Path |
 |---|---|
-| **Input** | `batch_prediction_dataset/on_demand_dataset.csv` (feature year 2025) |
+| **Input** | `batch_prediction_dataset/on_demand_dataset.csv` (**123** companies, feature year 2025) |
 | **Output** | `batch_prediction_dataset/on_demand_predictions.csv` |
 | **Command** | `python main.py predict` |
 
@@ -232,11 +232,12 @@ python main.py predict
 
 We delivered a reproducible batch MLOps pipeline with:
 
-- Live data ingestion from yfinance and FRED
+- Live data ingestion from yfinance and FRED (**492** company-year rows, **123** tickers)
 - Documented, leakage-safe feature engineering
 - Four-model comparison tracked in MLflow
-- Linear regression as the final model (test RMSE 0.0467, test R² 0.40, directional accuracy 91.0%)
+- Random forest as the final model (test RMSE 0.1476, test R² 0.039, directional accuracy 73.1%)
 - CI on pull requests and CD that retrains and commits model artifacts
-- On-demand batch predictions (2025 features → 2026 revenue growth)
+- On-demand batch predictions for **123** companies (2025 features → 2026 revenue growth)
+- All **7** pytest checks passing on live-fetched data
 
 The project prioritises **pipeline mechanics, reproducibility, and documentation** over forecasting accuracy, as required by the course.

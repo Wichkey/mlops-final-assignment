@@ -15,7 +15,7 @@ pytest tests/ -v
 
 | Command | Description |
 |---|---|
-| `python main.py fetch` | Load or generate raw CSV snapshots |
+| `python main.py fetch` | Fetch raw CSV snapshots from yfinance and FRED |
 | `python main.py features` | Engineer features |
 | `python main.py train` | Train models and log to MLflow |
 | `python main.py predict` | On-demand batch predictions |
