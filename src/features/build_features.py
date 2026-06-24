@@ -93,7 +93,6 @@ def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
     return pd.Series(result, index=numerator.index)
 
 
-
 def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
     frame = panel.copy()
 
