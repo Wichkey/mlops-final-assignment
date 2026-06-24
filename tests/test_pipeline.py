@@ -11,13 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils import load_config, ROOT_DIR, get_target_column  # noqa: E402
-from src.data.fetch import ensure_committed_snapshots  # noqa: E402
-from src.features.build_features import ( # noqa: E402
+from src.utils import load_config, get_target_column  # noqa: E402
+from src.data.fetch import run_fetch  # noqa: E402
+from src.features.build_features import (  # noqa: E402
     TARGET_COLUMNS,
-    build_features, 
+    build_features,
     feature_columns,
-  )  
+)
 from src.models.train import train_models  # noqa: E402
 
 REQUIRED_METRIC_KEYS = {"mae", "rmse", "r2", "directional_accuracy"}
@@ -28,17 +28,17 @@ EXPECTED_MODELS = {
     "gradient_boosting",
 }
 
+
 @pytest.fixture(scope="session")
 def config() -> dict:
-    """Load pipeline config and force the offline fetch path for tests."""
-    cfg = load_config()
-    cfg["fetch"]["use_live_apis"] = False  # never hit yfinance / FRED in CI
-    return cfg
+    """Load pipeline config."""
+    return load_config()
+
 
 @pytest.fixture(scope="session")
 def feature_paths(config) -> dict:
-    """Materialize committed snapshots, then build feature table"""
-    ensure_committed_snapshots(config)
+    """Fetch live snapshots, then build feature table."""
+    run_fetch(config)
     return build_features(config)
 
 
@@ -77,13 +77,13 @@ def metadata(trained_output) -> dict:
 # ---------------------------------------------------------------------------
 
 def test_features_table_non_empty(features_df, config) -> None:
-    """~n_companies x (synthetic_years - 1) rows; last year has no t+1 target."""
-    n_companies = int(config["fetch"]["n_companies"])
-    years = [int(y) for y in config["fetch"]["synthetic_years"]]
-    expected_rows = n_companies * (len(years) - 1)  # 500 * 8 = 4000 by default
+    """Live panel yields labeled rows for companies with overlapping fiscal years."""
+    n_tickers = len(config["tickers"])
+    years = [int(y) for y in config["fetch"]["fiscal_years"]]
+    max_rows = n_tickers * (len(years) - 1)
     assert len(features_df) > 0, "feature table is empty"
-    assert abs(len(features_df) - expected_rows) <= n_companies, (
-        f"expected ~{expected_rows} rows, got {len(features_df)}"
+    assert len(features_df) <= max_rows, (
+        f"expected at most {max_rows} rows, got {len(features_df)}"
     )
     assert {"company_id", "ticker", "fiscal_year"}.issubset(features_df.columns)
 
@@ -142,9 +142,8 @@ def test_train_models_exposes_required_metrics(trained_output, metadata) -> None
     for key in REQUIRED_METRIC_KEYS:
         assert key in test_metrics, f"missing metric '{key}' in test_metrics"
         assert isinstance(test_metrics[key], (int, float)), (
-            f"metric '{key}' must be numeric, got {type(test_metrics[key])._name_}"
+            f"metric '{key}' must be numeric, got {type(test_metrics[key]).__name__}"
         )
-    # Best model's train_metrics should also carry the same keys.
     assert REQUIRED_METRIC_KEYS.issubset(metadata.get("train_metrics", {}))
 
 
