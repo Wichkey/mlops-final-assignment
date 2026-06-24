@@ -22,11 +22,16 @@ def cmd_train() -> None:
 
 
 def cmd_predict() -> None:
-    print("not implemented yet")
+    from src.models.predict import run_predict
+
+    run_predict()
 
 
 def cmd_all() -> None:
-    print("not implemented yet")
+    cmd_fetch()
+    cmd_features()
+    cmd_train()
+    cmd_predict()
 
 
 def main() -> None:
