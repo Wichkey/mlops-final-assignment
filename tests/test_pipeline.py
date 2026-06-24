@@ -54,18 +54,22 @@ def on_demand_df(feature_paths) -> pd.DataFrame:
 
 @pytest.fixture(scope="session")
 def trained_output(feature_paths, config) -> dict:
-    """Run train_models() once and expose its return value."""
+    """Run train_models() once and expose its returned artifact paths."""
     result = train_models(config)
-    assert result is not None, "train_models() returned None"
+    assert isinstance(result, dict), "train_models() must return a dict"
+    assert {"model", "metadata"}.issubset(result), (
+        f"train_models() must return 'model' and 'metadata' paths; got {list(result)}"
+    )
+    for key in ("model", "metadata"):
+        path = Path(result[key])
+        assert path.is_file(), f"train_models() returned missing artifact: {path}"
     return result
 
 
 @pytest.fixture(scope="session")
-def metadata(trained_output, config) -> dict:
-    """Load models/metadata.json produced by train_models()."""
-    meta_path = ROOT_DIR / config["paths"]["models"] / "metadata.json"
-    assert meta_path.is_file(), f"metadata.json not found at {meta_path}"
-    return json.loads(meta_path.read_text(encoding="utf-8"))
+def metadata(trained_output) -> dict:
+    """Load models/metadata.json from the path returned by train_models()."""
+    return json.loads(Path(trained_output["metadata"]).read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -130,27 +134,18 @@ def test_on_demand_dataset_uses_feature_year(on_demand_df, config) -> None:
         )
 
 
-def test_train_models_returns_required_metrics(trained_output) -> None:
-    """train_models() must surface mae, rmse, r2, directional_accuracy."""
-    assert isinstance(trained_output, dict), "train_models() must return a dict"
-
-    # Accept either a flat metrics dict or one wrapped under "test_metrics"
-    # (matches the structure persisted in models/metadata.json).
-    if REQUIRED_METRIC_KEYS.issubset(trained_output.keys()):
-        flat = trained_output
-    elif isinstance(trained_output.get("test_metrics"), dict):
-        flat = trained_output["test_metrics"]
-    else:
-        pytest.fail(
-            "train_models() output missing required metric keys; "
-            f"got keys={list(trained_output)}"
-        )
-
+def test_train_models_exposes_required_metrics(trained_output, metadata) -> None:
+    """train_models() must surface mae, rmse, r2, directional_accuracy
+    for the persisted best model (top-level test_metrics in metadata.json)."""
+    assert "test_metrics" in metadata, "metadata.json missing top-level test_metrics"
+    test_metrics = metadata["test_metrics"]
     for key in REQUIRED_METRIC_KEYS:
-        assert key in flat, f"missing metric '{key}'"
-        assert isinstance(flat[key], (int, float)), (
-            f"metric '{key}' must be numeric, got {type(flat[key])._name_}"
+        assert key in test_metrics, f"missing metric '{key}' in test_metrics"
+        assert isinstance(test_metrics[key], (int, float)), (
+            f"metric '{key}' must be numeric, got {type(test_metrics[key])._name_}"
         )
+    # Best model's train_metrics should also carry the same keys.
+    assert REQUIRED_METRIC_KEYS.issubset(metadata.get("train_metrics", {}))
 
 
 def test_metadata_lists_four_models(metadata, config) -> None:
