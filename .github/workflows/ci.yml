@@ -26,5 +26,5 @@ jobs:
             --max-line-length=100 \
             --extend-ignore=E203,W503
 
-      - name: Run pytest (live fetch)
+      - name: Run pytest
         run: python -m pytest tests/ -v
