@@ -29,10 +29,5 @@ __pycache__/
 mlflow.db
 mlruns/
 
-# Generated pipeline data
-datasets/raw/*.csv
-datasets/processed/*.csv
-batch_prediction_dataset/*.csv
-
 # pytest
 .pytest_cache/
