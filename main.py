@@ -4,23 +4,34 @@ import argparse
 
 
 def cmd_fetch() -> None:
-    print("not implemented yet")
+    from src.data.fetch import run_fetch
+
+    run_fetch()
 
 
 def cmd_features() -> None:
-    print("not implemented yet")
+    from src.features.build_features import build_features
+
+    build_features()
 
 
 def cmd_train() -> None:
-    print("not implemented yet")
+    from src.models.train import train_models
+
+    train_models()
 
 
 def cmd_predict() -> None:
-    print("not implemented yet")
+    from src.models.predict import run_predict
+
+    run_predict()
 
 
 def cmd_all() -> None:
-    print("not implemented yet")
+    cmd_fetch()
+    cmd_features()
+    cmd_train()
+    cmd_predict()
 
 
 def main() -> None:
@@ -29,7 +40,7 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("fetch", help="Fetch or generate raw data snapshots")
+    subparsers.add_parser("fetch", help="Fetch raw data snapshots from live APIs")
     subparsers.add_parser("features", help="Engineer features from raw data")
     subparsers.add_parser("train", help="Train and compare models")
     subparsers.add_parser("predict", help="Run on-demand batch predictions")
