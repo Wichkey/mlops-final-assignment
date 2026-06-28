@@ -1,4 +1,4 @@
-"""Data ingestion from yfinance and FRED."""
+"""Data ingestion from yfinance and FRED. """
 
 from __future__ import annotations
 
